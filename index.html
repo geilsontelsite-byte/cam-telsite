@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>CAM TELSITE</title>
+<!-- CAM TELSITE · Mini App de fotos com localização · rev01 · 14/11/2026
+     Hospede este arquivo (ex.: GitHub Pages) e cadastre no @BotFather:
+       https://<usuario>.github.io/cam-telsite/?api=<ID ou URL /exec do App da Web do bot>
+     Teste no navegador, sem servidor:  index.html?demo=1 -->
+<script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+<style>
+  :root {
+    --azul: #0F2238; --azul2: #1F3A5F; --ambar: #F5A623; --amarelo: #FFD54A;
+    --ok: #2EBD6B; --alerta: #F2A93B; --erro: #E5484D;
+    --bg: var(--tg-theme-bg-color, #ffffff); --txt: var(--tg-theme-text-color, #0f1720);
+    --dica: var(--tg-theme-hint-color, #6b7785); --card: var(--tg-theme-secondary-bg-color, #f1f4f8);
+    --link: var(--tg-theme-link-color, #2a7de1); --btn: var(--tg-theme-button-color, #2a7de1);
+    --btntxt: var(--tg-theme-button-text-color, #ffffff);
+    --seg-b: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--txt);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; overscroll-behavior: none; }
+  button { font: inherit; border: 0; cursor: pointer; }
+  [hidden] { display: none !important; }
+  .tela { position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .rolar { overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; }
+
+  /* carregando / erro */
+  .centro { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; gap: 12px; }
+  .giro { width: 38px; height: 38px; border-radius: 50%; border: 4px solid rgba(127,127,127,.25); border-top-color: var(--ambar); animation: g 0.9s linear infinite; }
+  @keyframes g { to { transform: rotate(360deg); } }
+  .icone-grande { font-size: 46px; }
+  .titulo { font-size: 19px; font-weight: 700; }
+  .dica { color: var(--dica); font-size: 14px; }
+
+  /* botões */
+  .bt { padding: 13px 18px; border-radius: 12px; font-weight: 600; background: var(--btn); color: var(--btntxt); }
+  .bt.sec { background: var(--card); color: var(--txt); }
+  .bt.cheio { width: 100%; }
+  .bt:disabled { opacity: .45; }
+
+  /* menu */
+  .topo { background: var(--azul); color: #fff; padding: 16px 16px 14px; }
+  .topo .marca { font-weight: 800; letter-spacing: .5px; font-size: 17px; }
+  .topo .marca b { color: var(--ambar); }
+  .topo .quem { opacity: .85; font-size: 13px; margin-top: 2px; }
+  .chip-os { display: inline-block; margin-top: 8px; background: rgba(255,255,255,.12); padding: 4px 10px; border-radius: 99px; font-size: 13px; }
+  .lista { padding: 12px; display: grid; gap: 10px; }
+  .modo { display: flex; align-items: center; gap: 12px; padding: 14px; background: var(--card); color: var(--txt); border-radius: 14px; text-align: left; width: 100%; }
+  .modo .ic { font-size: 26px; width: 40px; text-align: center; }
+  .modo .nm { font-weight: 650; }
+  .modo .ds { color: var(--dica); font-size: 13px; }
+  .rodape { padding: 10px 16px calc(14px + var(--seg-b)); color: var(--dica); font-size: 12px; text-align: center; }
+
+  /* câmera */
+  #tela-camera, #tela-revisao { background: #000; color: #fff; }
+  #video, #img-rev { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+  #img-rev { object-fit: contain; }
+  .barra-topo { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 8px; padding: 10px 10px;
+    background: linear-gradient(rgba(0,0,0,.65), rgba(0,0,0,0)); z-index: 3; }
+  .bt-red { width: 40px; height: 40px; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; font-size: 19px; display: flex; align-items: center; justify-content: center; }
+  .nome-modo { flex: 1; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gps { position: absolute; top: 58px; left: 10px; z-index: 3; padding: 6px 11px; border-radius: 99px; font-size: 13px; font-weight: 600;
+    background: rgba(0,0,0,.55); display: flex; gap: 6px; align-items: center; }
+  .gps i { width: 9px; height: 9px; border-radius: 50%; background: #888; display: inline-block; }
+  .gps.ok i { background: var(--ok); } .gps.medio i { background: var(--alerta); } .gps.ruim i { background: var(--erro); }
+  #carimbo-vivo { position: absolute; left: 0; right: 0; bottom: calc(118px + var(--seg-b)); z-index: 2; padding: 8px 12px 8px 15px;
+    background: rgba(8,16,28,.58); border-left: 4px solid var(--ambar); font-size: 12px; line-height: 1.35; }
+  #carimbo-vivo .c { color: var(--amarelo); font-family: ui-monospace, "Roboto Mono", Menlo, monospace; font-weight: 700; font-size: 13px; }
+  #carimbo-vivo .t { font-weight: 700; }
+  .controles { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: calc(118px + var(--seg-b)); padding-bottom: var(--seg-b);
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; background: rgba(0,0,0,.72); }
+  .disparo { width: 74px; height: 74px; border-radius: 50%; background: #fff; border: 5px solid rgba(255,255,255,.35); background-clip: padding-box; }
+  .disparo:disabled { background: #666; }
+  .disparo:active { transform: scale(.94); }
+  .miniaturas { display: flex; gap: 6px; padding-left: 12px; overflow-x: auto; }
+  .mini { position: relative; flex: 0 0 auto; width: 44px; height: 44px; border-radius: 8px; overflow: hidden; border: 2px solid rgba(255,255,255,.6); }
+  .mini img { width: 100%; height: 100%; object-fit: cover; }
+  .mini b { position: absolute; right: 1px; bottom: 0; font-size: 12px; text-shadow: 0 0 3px #000; }
+  .bt-concluir { justify-self: end; margin-right: 12px; padding: 10px 14px; border-radius: 99px; background: var(--ambar); color: #1b1300; font-weight: 700; }
+  #cam-aviso { position: absolute; inset: 0; z-index: 4; background: rgba(0,0,0,.85); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 30px; gap: 14px; }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 5; transition: opacity .25s; }
+  .flash.on { opacity: .85; transition: none; }
+  .barra-rev { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    padding: 14px 14px calc(14px + var(--seg-b)); background: rgba(0,0,0,.72); }
+
+  /* fechar / fim */
+  .cab { padding: 14px 16px; background: var(--azul); color: #fff; display: flex; align-items: center; gap: 10px; }
+  .cab .titulo { font-size: 17px; }
+  .corpo { padding: 14px 16px; display: grid; gap: 14px; }
+  .faixa-fotos { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+  .faixa-fotos .mini { width: 64px; height: 64px; border-color: var(--card); }
+  label.campo { display: grid; gap: 6px; font-size: 13px; color: var(--dica); font-weight: 600; }
+  .campo input, .campo select, .campo textarea { font: inherit; font-size: 16px; color: var(--txt); background: var(--card); border: 1px solid transparent;
+    border-radius: 10px; padding: 11px 12px; width: 100%; }
+  .campo textarea { min-height: 70px; resize: vertical; }
+  .campo input:focus, .campo select:focus, .campo textarea:focus { outline: none; border-color: var(--btn); }
+  .ctx { background: var(--card); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+  .msg { border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+  .msg.erro { background: rgba(229,72,77,.12); color: var(--erro); }
+  .msg.alerta { background: rgba(242,169,59,.15); }
+  .pe { padding: 12px 16px calc(14px + var(--seg-b)); display: grid; gap: 10px; border-top: 1px solid rgba(127,127,127,.15); }
+  .duas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .res-topo { text-align: center; padding: 22px 16px 6px; }
+  .res-topo .icone-grande { font-size: 54px; }
+  .coord { font-family: ui-monospace, "Roboto Mono", Menlo, monospace; font-weight: 700; font-size: 16px; user-select: all; }
+  .lk { color: var(--link); word-break: break-all; font-size: 13px; text-decoration: none; }
+  ul.al { margin: 4px 0 0; padding-left: 18px; }
+</style>
+</head>
+<body>
+
+<section id="tela-carregando" class="tela">
+  <div class="centro"><div class="giro"></div><div class="dica" id="txt-carregando">Abrindo CAM TELSITE…</div></div>
+</section>
+
+<section id="tela-erro" class="tela" hidden>
+  <div class="centro">
+    <div class="icone-grande" id="erro-ic">⚠️</div>
+    <div class="titulo" id="erro-tit">Algo deu errado</div>
+    <div class="dica" id="erro-txt"></div>
+    <div style="display:flex; gap:10px; margin-top:8px">
+      <button class="bt sec" id="erro-fechar">Fechar</button>
+      <button class="bt" id="erro-tentar">Tentar de novo</button>
+    </div>
+  </div>
+</section>
+
+<section id="tela-menu" class="tela" hidden>
+  <div class="topo">
+    <div class="marca">CAM <b>TELSITE</b></div>
+    <div class="quem" id="menu-quem"></div>
+    <div class="chip-os" id="menu-os" hidden></div>
+  </div>
+  <div class="rolar"><div class="lista" id="menu-lista"></div></div>
+  <div class="rodape">Foto na hora, com local e horário gravados. Fotos da galeria não entram.</div>
+</section>
+
+<section id="tela-camera" class="tela" hidden>
+  <video id="video" playsinline muted autoplay></video>
+  <div class="barra-topo">
+    <button class="bt-red" id="cam-voltar" aria-label="Voltar">‹</button>
+    <div class="nome-modo" id="cam-modo"></div>
+    <button class="bt-red" id="cam-virar" aria-label="Trocar câmera">⟲</button>
+  </div>
+  <div class="gps" id="gps"><i></i><span id="gps-txt">Aguardando GPS…</span></div>
+  <div id="carimbo-vivo"></div>
+  <div class="controles">
+    <div class="miniaturas" id="cam-minis"></div>
+    <button class="disparo" id="disparo" aria-label="Fotografar" disabled></button>
+    <div style="display:flex; justify-content:flex-end"><button class="bt-concluir" id="cam-concluir" hidden>Concluir</button></div>
+  </div>
+  <div id="cam-aviso" hidden>
+    <div class="icone-grande">📷</div>
+    <div id="cam-aviso-txt"></div>
+    <button class="bt" id="cam-tentar">Tentar de novo</button>
+  </div>
+  <div class="flash" id="flash"></div>
+</section>
+
+<section id="tela-revisao" class="tela" hidden>
+  <img id="img-rev" alt="Foto">
+  <div class="barra-rev">
+    <button class="bt sec" id="rev-refazer">Refazer</button>
+    <button class="bt" id="rev-usar">Usar foto</button>
+  </div>
+</section>
+
+<section id="tela-fechar" class="tela" hidden>
+  <div class="cab"><button class="bt-red" id="fec-voltar" aria-label="Voltar">‹</button><div class="titulo" id="fec-tit">Enviar</div></div>
+  <div class="rolar"><div class="corpo">
+    <div class="faixa-fotos" id="fec-minis"></div>
+    <div class="ctx" id="fec-ctx" hidden></div>
+    <div id="fec-campos" style="display:grid; gap:12px"></div>
+    <div class="msg erro" id="fec-erro" hidden></div>
+  </div></div>
+  <div class="pe">
+    <button class="bt cheio" id="fec-enviar">Enviar</button>
+    <button class="bt sec cheio" id="fec-mais" hidden>+ Tirar mais fotos</button>
+  </div>
+</section>
+
+<section id="tela-fim" class="tela" hidden>
+  <div class="rolar">
+    <div class="res-topo">
+      <div class="icone-grande" id="fim-ic">✅</div>
+      <div class="titulo" id="fim-tit"></div>
+      <div class="dica" id="fim-sub"></div>
+    </div>
+    <div class="corpo" id="fim-corpo"></div>
+  </div>
+  <div class="pe">
+    <div class="duas"><button class="bt sec" id="fim-outro">Outro registro</button><button class="bt" id="fim-nova">Nova foto</button></div>
+    <button class="bt sec cheio" id="fim-fechar">Fechar</button>
+  </div>
+</section>
+
+<script>
+'use strict';
+/* ======================= CONFIGURAÇÃO ======================= */
+const API_PADRAO = 'AKfycbx58OzZPpWpsa0cGHEiIvA2U5o8JQAiKWToKHBG2BKKeKrUPsv3nODxjkWSI2UPHAE4Fg';   // App da Web do bot (implantação CAM, versão 5); o ?api= da URL tem prioridade
+const TZ = 'America/Sao_Paulo';
+const MAPA = 'https://www.google.com/maps/search/?api=1&query=';
+
+const TG = (window.Telegram && window.Telegram.WebApp) || null;
+const Q = new URLSearchParams(location.search);
+const DEMO = Q.get('demo') === '1';
+const API = urlApi(Q.get('api') || API_PADRAO);
+
+const S = {
+  cfg: null, modo: null, lote: '', fotos: [], atual: null, tela: '', fila: Promise.resolve(),
+  gps: null, gpsErro: '', watch: null, offset: 0, endereco: '', endPos: null, endBusy: false,
+  stream: null, facing: 'environment', concluido: false, pediuEscrita: false, ultimo: null
+};
+const $ = (s) => document.querySelector(s);
+
+function urlApi(v) {
+  v = String(v || '').trim();
+  if (!v) return '';
+  return /^https?:\/\//i.test(v) ? v : 'https://script.google.com/macros/s/' + v + '/exec';
+}
+
+/* ======================= INÍCIO ======================= */
+async function iniciar() {
+  if (TG) {
+    try { TG.ready(); TG.expand(); } catch (e) {}
+    try { if (TG.isVersionAtLeast && TG.isVersionAtLeast('7.7')) TG.disableVerticalSwipes(); } catch (e) {}
+    try { TG.setHeaderColor('#0F2238'); } catch (e) {}
+    try { TG.BackButton.onClick(voltar); } catch (e) {}
+  }
+  if (!DEMO && !(TG && TG.initData)) return erro('📱', 'Abra pelo Telegram', 'Este app funciona dentro do Telegram, pelo botão ou link do bot.', false);
+  if (!DEMO && !API) return erro('⚙️', 'Falta configurar', 'O endereço do servidor não veio no link (parâmetro ?api=). Avise a supervisão.', false);
+
+  const t0 = Date.now();
+  const r = await api('init', {}, 3);
+  const t1 = Date.now();
+  if (!r.ok) return erro(r.auth === false ? '🔒' : '⚠️', r.auth === false ? 'Sessão não confirmada' : 'Não consegui abrir', r.erro || 'Falha desconhecida.', true);
+  S.offset = Number(r.agora) - Math.round((t0 + t1) / 2);   // hora do servidor, compensando a ida e volta
+  S.cfg = r;
+  iniciarGps();
+  setInterval(tique, 500);
+  const m = r.modoInicial && r.modos.find((x) => x.modo === r.modoInicial);
+  if (m) abrirModo(m); else mostraMenu();
+}
+
+/* ======================= SERVIDOR ======================= */
+async function api(acao, dados, tentativas) {
+  if (DEMO) return demo(acao, dados || {});
+  const corpo = JSON.stringify(Object.assign({ cam: 1, acao: acao, initData: TG ? TG.initData : '' }, dados || {}));
+  const n = tentativas || 1;
+  let ultimo = '';
+  for (let i = 0; i < n; i++) {
+    try {
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), (acao === 'foto' || acao === 'concluir') ? 120000 : 30000);
+      const r = await fetch(API, { method: 'POST', body: corpo, signal: ctl.signal, redirect: 'follow' });   // text/plain: sem preflight
+      clearTimeout(to);
+      const j = await r.json();
+      if (j && (j.ok || j.auth === false || !j.rede)) return j;
+    } catch (e) {
+      ultimo = e && e.name === 'AbortError' ? 'tempo esgotado' : (e && e.message) || 'rede';
+    }
+    if (i < n - 1) await espera(1500 * Math.pow(2.2, i));
+  }
+  return { ok: false, rede: true, erro: 'Sem conexão com o servidor (' + ultimo + '). Verifique o sinal e tente de novo.' };
+}
+
+/* ======================= TELAS ======================= */
+function mostra(id) {
+  document.querySelectorAll('.tela').forEach((t) => { t.hidden = t.id !== id; });
+  S.tela = id;
+  if (TG && TG.BackButton) {
+    try { (id === 'tela-menu' || id === 'tela-carregando' || id === 'tela-erro' || (id === 'tela-camera' && !temMenu())) ? TG.BackButton.hide() : TG.BackButton.show(); } catch (e) {}
+  }
+  if (id !== 'tela-camera') pararCamera();
+  fechamentoProtegido();
+}
+function temMenu() { return S.cfg && S.cfg.modos && S.cfg.modos.length > 1; }
+
+function erro(ic, tit, txt, podeTentar) {
+  $('#erro-ic').textContent = ic; $('#erro-tit').textContent = tit; $('#erro-txt').textContent = txt;
+  $('#erro-tentar').hidden = !podeTentar;
+  mostra('tela-erro');
+}
+
+function mostraMenu() {
+  const c = S.cfg;
+  $('#menu-quem').textContent = c.pessoa.nome + (c.pessoa.eq !== '' && c.pessoa.eq != null ? ' · EQUIPE ' + pad2(c.pessoa.eq) : '') + (DEMO ? ' · DEMONSTRAÇÃO' : '');
+  const os = c.contexto.osCurta ? '🔗 ' + c.contexto.osCurta + (c.contexto.elemento ? ' · ' + c.contexto.elemento : '') : '';
+  $('#menu-os').hidden = !os; $('#menu-os').textContent = os;
+  const lista = $('#menu-lista'); lista.innerHTML = '';
+  c.modos.forEach((m) => {
+    const b = document.createElement('button'); b.className = 'modo';
+    b.innerHTML = '<span class="ic"></span><span><div class="nm"></div><div class="ds"></div></span>';
+    b.querySelector('.ic').textContent = m.icone; b.querySelector('.nm').textContent = m.rotulo; b.querySelector('.ds').textContent = m.descricao || '';
+    b.onclick = () => abrirModo(m);
+    lista.appendChild(b);
+  });
+  mostra('tela-menu');
+}
+
+function abrirModo(m) {
+  S.modo = m; S.lote = novoLote(); S.fotos = []; S.atual = null; S.concluido = false; S.fila = Promise.resolve();
+  $('#cam-modo').textContent = m.icone + ' ' + m.rotulo;
+  $('#cam-voltar').hidden = !temMenu();
+  pedeEscritaSePrecisar(m);
+  mostraCamera();
+}
+
+function mostraCamera() {
+  mostra('tela-camera');
+  renderMinis();
+  ligarCamera();
+  tique();
+}
+
+/* ======================= CÂMERA ======================= */
+async function ligarCamera() {
+  pararCamera();
+  $('#cam-aviso').hidden = true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return avisoCamera('Este Telegram não libera a câmera para o app. Atualize o Telegram e tente de novo.');
+  try {
+    S.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: S.facing }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    if (S.tela !== 'tela-camera') return pararCamera();
+    const v = $('#video');
+    v.srcObject = S.stream;
+    v.style.transform = S.facing === 'user' ? 'scaleX(-1)' : '';
+    await v.play().catch(() => {});
+  } catch (e) {
+    avisoCamera(e && e.name === 'NotAllowedError'
+      ? 'Permita a câmera para o Telegram (Ajustes do celular › Telegram › Câmera) e toque em Tentar de novo.'
+      : 'Não consegui abrir a câmera (' + ((e && e.name) || 'erro') + ').');
+  }
+}
+function pararCamera() { if (S.stream) { S.stream.getTracks().forEach((t) => t.stop()); S.stream = null; } }
+function avisoCamera(txt) { $('#cam-aviso-txt').textContent = txt; $('#cam-aviso').hidden = false; }
+
+function podeFotografar() {
+  const v = $('#video');
+  return S.tela === 'tela-camera' && !!S.stream && v.videoWidth > 0 && gpsValido() && S.fotos.length < S.modo.fotosMax;
+}
+
+function capturar() {
+  if (!podeFotografar()) return;
+  const v = $('#video'), p = S.cfg.params;
+  const k = Math.min(1, p.ladoMax / Math.max(v.videoWidth, v.videoHeight));
+  const w = Math.round(v.videoWidth * k), h = Math.round(v.videoHeight * k);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d');
+  cx.drawImage(v, 0, 0, w, h);
+  const agora = Date.now(), carimbo = agora + S.offset, g = S.gps;
+  desenhaCarimbo(cx, w, h, linhasCarimbo(carimbo, g, S.fotos.length + 1));
+  S.atual = {
+    idx: S.fotos.length, dataUrl: cv.toDataURL('image/jpeg', p.qualidade), estado: 'nova',
+    meta: { lat: g.lat, lon: g.lon, precisao: g.prec == null ? null : Math.round(g.prec), fonteGps: g.fonte,
+      gpsIdadeS: Math.round((agora - g.t) / 1000), carimbo: carimbo, relogioCel: agora, endereco: S.endereco }
+  };
+  vibra('impact');
+  const fl = $('#flash'); fl.classList.add('on'); setTimeout(() => fl.classList.remove('on'), 60);
+  $('#img-rev').src = S.atual.dataUrl;
+  mostra('tela-revisao');
+}
+
+/* ======================= CARIMBO ======================= */
+function linhasCarimbo(carimbo, g, n) {
+  const c = S.cfg, m = S.modo, ctx = c.contexto;
+  const alvo = ctx.osCurta ? ctx.osCurta + (ctx.elemento ? ' · ' + ctx.elemento : '') : (ctx.ref || '');
+  const l = [{ t: 'TELSITE · ' + m.rotulo.toUpperCase() + (alvo ? ' · ' + alvo : ''), k: 'titulo' },
+    { t: dataHora(carimbo), k: 'normal' }];
+  if (g && g.lat != null) l.push({ t: coordTxt(g.lat, g.lon) + (g.prec != null ? '   ±' + Math.round(g.prec) + ' m' : ''), k: 'coord' });
+  if (S.endereco) l.push({ t: enderecoCurto(S.endereco), k: 'normal', quebra: 2 });
+  l.push({ t: c.pessoa.nome + (c.pessoa.eq !== '' && c.pessoa.eq != null ? ' · EQUIPE ' + pad2(c.pessoa.eq) : '') + ' · ' + S.lote.slice(-6).toUpperCase() + '-' + n, k: 'pequeno' });
+  return l;
+}
+
+function desenhaCarimbo(cx, w, h, linhas) {
+  const fs = Math.max(13, Math.round(Math.min(w, h) * 0.034));
+  const lh = Math.round(fs * 1.34), pad = Math.round(fs * 0.75), barra = Math.max(4, Math.round(fs * 0.24));
+  const x = barra + pad, larg = w - x - pad;
+  const estilo = (k) => {
+    if (k === 'coord') { cx.font = '700 ' + Math.round(fs * 1.06) + 'px ui-monospace, "Roboto Mono", "DejaVu Sans Mono", Menlo, monospace'; cx.fillStyle = '#FFD54A'; }
+    else if (k === 'titulo') { cx.font = '700 ' + fs + 'px Roboto, "Helvetica Neue", Arial, sans-serif'; cx.fillStyle = '#FFFFFF'; }
+    else if (k === 'pequeno') { cx.font = '500 ' + Math.round(fs * 0.86) + 'px Roboto, "Helvetica Neue", Arial, sans-serif'; cx.fillStyle = 'rgba(255,255,255,0.85)'; }
+    else { cx.font = '500 ' + fs + 'px Roboto, "Helvetica Neue", Arial, sans-serif'; cx.fillStyle = '#FFFFFF'; }
+  };
+  const render = [];                                   // quebra o endereço em até 2 linhas antes de medir a faixa
+  linhas.forEach((ln) => { estilo(ln.k); quebraTexto(cx, ln.t, larg, ln.quebra || 1).forEach((t) => render.push({ t: t, k: ln.k })); });
+  const altura = render.length * lh + pad * 2;
+  cx.save();
+  cx.fillStyle = 'rgba(8,16,28,0.62)'; cx.fillRect(0, h - altura, w, altura);
+  cx.fillStyle = '#F5A623'; cx.fillRect(0, h - altura, barra, altura);
+  cx.textBaseline = 'middle';
+  cx.shadowColor = 'rgba(0,0,0,0.7)'; cx.shadowBlur = Math.round(fs * 0.18);
+  render.forEach((ln, i) => { estilo(ln.k); cx.fillText(ln.t, x, h - altura + pad + lh * i + lh / 2); });
+  cx.restore();
+}
+
+function quebraTexto(cx, t, larg, max) {
+  if (max <= 1 || cx.measureText(t).width <= larg) return [cabe(cx, t, larg)];
+  const pal = t.split(' '), out = [];
+  let atual = '';
+  while (pal.length) {
+    const tenta = atual ? atual + ' ' + pal[0] : pal[0];
+    if (cx.measureText(tenta).width <= larg || !atual) { atual = tenta; pal.shift(); }
+    else { out.push(atual); atual = ''; if (out.length === max - 1) break; }
+  }
+  const resto = [atual].concat(pal).filter(Boolean).join(' ');
+  if (resto) out.push(cabe(cx, resto, larg));
+  return out.slice(0, max);
+}
+
+function enderecoCurto(e) { return String(e || '').replace(/,?\s*\d{5}-?\d{3}/, '').replace(/,\s*(Brasil|Brazil)\s*$/i, '').trim(); }
+
+function cabe(cx, t, larg) {
+  if (cx.measureText(t).width <= larg) return t;
+  while (t.length > 1 && cx.measureText(t + '…').width > larg) t = t.slice(0, -1);
+  return t + '…';
+}
+
+/* ======================= GPS ======================= */
+function iniciarGps() {
+  const lm = TG && TG.LocationManager;
+  if (lm && TG.isVersionAtLeast && TG.isVersionAtLeast('8.0')) {
+    try {
+      lm.init(() => { if (lm.isLocationAvailable) cicloTg(); else gpsNav(); });
+      return;
+    } catch (e) {}
+  }
+  gpsNav();
+}
+function cicloTg() {
+  const lm = TG.LocationManager;
+  try {
+    lm.getLocation((d) => {
+      if (d && d.latitude != null) {
+        S.gpsErro = '';
+        aplicaFix(d.latitude, d.longitude, d.horizontal_accuracy, 'TG');
+        setTimeout(cicloTg, 3000);
+      } else if (lm.isAccessRequested && !lm.isAccessGranted) {
+        S.gpsErro = 'negado-tg'; tique(); gpsNav();
+      } else setTimeout(cicloTg, 4000);
+    });
+  } catch (e) { gpsNav(); }
+}
+function gpsNav() {
+  if (!navigator.geolocation) { if (!S.gps) { S.gpsErro = 'indisponivel'; tique(); } return; }
+  if (S.watch != null) return;
+  S.watch = navigator.geolocation.watchPosition(
+    (p) => { if (S.gpsErro !== 'negado-tg') S.gpsErro = ''; aplicaFix(p.coords.latitude, p.coords.longitude, p.coords.accuracy, 'NAV'); },
+    (e) => { if (!S.gps || S.gps.fonte === 'NAV') { S.gpsErro = e.code === 1 ? 'negado' : 'sinal'; tique(); } },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+}
+function aplicaFix(lat, lon, prec, fonte) {
+  if (lat == null || lon == null || !isFinite(lat) || !isFinite(lon)) return;
+  S.gps = { lat: Number(lat), lon: Number(lon), prec: (prec == null || !isFinite(prec)) ? null : Number(prec), t: Date.now(), fonte: fonte };
+  if (fonte === 'NAV' && S.gpsErro === 'negado-tg') S.gpsErro = '';
+  buscaEndereco();
+  tique();
+}
+function gpsValido() {
+  const g = S.gps, p = S.cfg && S.cfg.params;
+  if (!g || !p) return false;
+  return (Date.now() - g.t) / 1000 <= p.gpsIdadeMax && (g.prec == null || g.prec <= p.precisaoBloqueio);
+}
+function buscaEndereco() {
+  const g = S.gps;
+  if (!g || S.endBusy) return;
+  if (S.endPos && distM(S.endPos.lat, S.endPos.lon, g.lat, g.lon) < 40) return;
+  S.endBusy = true;
+  const pos = { lat: g.lat, lon: g.lon };
+  api('geo', pos, 1).then((r) => { if (r && r.ok) { S.endereco = r.endereco || ''; S.endPos = pos; } })
+    .finally(() => { S.endBusy = false; });
+}
+
+/* ======================= RELÓGIO (atualiza a tela) ======================= */
+function tique() {
+  if (S.tela !== 'tela-camera' || !S.cfg || !S.modo) return;
+  const g = S.gps, p = S.cfg.params, el = $('#gps'), tx = $('#gps-txt');
+  el.className = 'gps';
+  if (!g) {
+    tx.textContent = S.gpsErro === 'negado' || S.gpsErro === 'negado-tg' ? 'Localização negada: permita para o Telegram' : (S.gpsErro === 'indisponivel' ? 'GPS indisponível neste aparelho' : 'Aguardando GPS…');
+    el.classList.add(S.gpsErro ? 'ruim' : 'medio');
+  } else {
+    const idade = Math.round((Date.now() - g.t) / 1000);
+    const pr = g.prec == null ? 'precisão ?' : '±' + Math.round(g.prec) + ' m';
+    tx.textContent = (gpsValido() ? '' : 'Aguarde · ') + pr + (idade > 5 ? ' · há ' + idade + ' s' : '');
+    el.classList.add(!gpsValido() ? 'ruim' : (g.prec != null && g.prec > p.precisaoMax ? 'medio' : 'ok'));
+  }
+  const viv = $('#carimbo-vivo'); viv.innerHTML = '';
+  linhasCarimbo(Date.now() + S.offset, g, S.fotos.length + 1).forEach((l) => {
+    const d = document.createElement('div');
+    d.className = l.k === 'coord' ? 'c' : (l.k === 'titulo' ? 't' : '');
+    d.textContent = l.t;
+    viv.appendChild(d);
+  });
+  if (!g) { const d = document.createElement('div'); d.className = 'c'; d.textContent = 'sem localização ainda'; viv.insertBefore(d, viv.children[2] || null); }
+  $('#disparo').disabled = !podeFotografar();
+  const n = S.fotos.length;
+  $('#cam-concluir').hidden = n === 0;
+  $('#cam-concluir').textContent = 'Concluir (' + n + ')';
+}
+
+/* ======================= REVISÃO, FILA E ENVIO ======================= */
+function usarFoto() {
+  const f = S.atual; if (!f) return;
+  S.atual = null; S.fotos.push(f);
+  enfileira(f);
+  if (S.fotos.length >= S.modo.fotosMax) mostraFechar(); else mostraCamera();
+}
+function enfileira(f) { S.fila = S.fila.then(() => enviaFoto(f)); return S.fila; }
+async function enviaFoto(f) {
+  if (f.estado === 'ok') return;
+  f.estado = 'enviando'; renderMinis();
+  const r = await api('foto', { modo: S.modo.modo, lote: S.lote, idx: f.idx, foto: f.dataUrl.split(',')[1], meta: f.meta }, 3);
+  f.estado = r.ok ? 'ok' : 'erro'; f.erro = r.ok ? '' : r.erro;
+  renderMinis();
+}
+
+function renderMinis() {
+  ['#cam-minis', '#fec-minis'].forEach((sel) => {
+    const box = $(sel); if (!box) return;
+    box.innerHTML = '';
+    S.fotos.forEach((f) => {
+      const d = document.createElement('div'); d.className = 'mini';
+      const im = document.createElement('img'); im.src = f.dataUrl; d.appendChild(im);
+      const b = document.createElement('b'); b.textContent = f.estado === 'ok' ? '✅' : (f.estado === 'erro' ? '⚠️' : '⏳'); d.appendChild(b);
+      box.appendChild(d);
+    });
+  });
+  fechamentoProtegido();
+}
+
+function mostraFechar() {
+  const m = S.modo, c = S.cfg;
+  $('#fec-tit').textContent = m.icone + ' ' + m.rotulo;
+  $('#fec-erro').hidden = true;
+  const os = c.contexto.osCurta ? '🔗 ' + c.contexto.osCurta + (c.contexto.elemento ? ' · ' + c.contexto.elemento : '') : '';
+  $('#fec-ctx').hidden = !os; $('#fec-ctx').textContent = os;
+  const box = $('#fec-campos');
+  if (!box.dataset.lote || box.dataset.lote !== S.lote) { box.innerHTML = ''; montaCampos(box); box.dataset.lote = S.lote; }
+  $('#fec-mais').hidden = S.fotos.length >= m.fotosMax;
+  $('#fec-enviar').disabled = false;
+  $('#fec-enviar').textContent = S.fotos.length > 1 ? 'Enviar ' + S.fotos.length + ' fotos' : 'Enviar';
+  mostra('tela-fechar');
+  renderMinis();
+}
+
+function montaCampos(box) {
+  const m = S.modo, c = S.cfg, campos = m.campos || [];
+  const add = (html) => { const d = document.createElement('div'); d.innerHTML = html; box.appendChild(d.firstElementChild); };
+  if (campos.indexOf('TIPO') >= 0) {
+    const tipos = c.tiposPonto && c.tiposPonto.length ? c.tiposPonto : ['ENTRADA', 'SAÍDA INTERVALO', 'VOLTA INTERVALO', 'SAÍDA'];
+    add('<label class="campo">Tipo de ponto<select id="f-tipo"><option value="AUTO">Automático (pela ordem do dia)</option>' + tipos.map((t) => '<option>' + esc(t) + '</option>').join('') + '</select></label>');
+  }
+  if (campos.indexOf('PLACA') >= 0) add('<label class="campo">Placa<input id="f-placa" maxlength="8" autocapitalize="characters" value="' + esc(c.pessoa.placa || '') + '" placeholder="ABC1D23"></label>');
+  if (campos.indexOf('KM') >= 0) add('<label class="campo">KM do painel (opcional, confere a leitura da foto)<input id="f-km" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="Ex.: 137051"></label>');
+  if (campos.indexOf('EVENTO') >= 0 && c.eventosKm && c.eventosKm.length) {
+    add('<label class="campo">Momento<select id="f-evento"><option value="AUTO">Automático</option>' + c.eventosKm.map((t) => '<option>' + esc(t) + '</option>').join('') + '</select></label>');
+  }
+  if (campos.indexOf('REF') >= 0) add('<label class="campo">Referência<input id="f-ref" maxlength="80" value="' + esc(c.contexto.ref || '') + '" placeholder="Elemento, poste, caixa, nota…"></label>');
+  if (campos.indexOf('OBS') >= 0) add('<label class="campo">Observação<textarea id="f-obs" maxlength="300" placeholder="Opcional"></textarea></label>');
+}
+function valor(id) { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; }
+
+async function enviarLote() {
+  const bt = $('#fec-enviar'); bt.disabled = true; $('#fec-erro').hidden = true;
+  const campos = { tipo: valor('f-tipo'), placa: valor('f-placa'), km: valor('f-km'), evento: valor('f-evento'), ref: valor('f-ref'), obs: valor('f-obs') };
+  if (campos.km && !/^\d{4,7}$/.test(campos.km.replace(/\D/g, ''))) return falhaEnvio('KM com 4 a 7 dígitos, só números.');
+  bt.textContent = 'Enviando fotos…';
+  await S.fila;
+  const pend = S.fotos.filter((f) => f.estado !== 'ok');
+  for (const f of pend) await enfileira(f);
+  const ruins = S.fotos.filter((f) => f.estado !== 'ok');
+  if (ruins.length) return falhaEnvio((ruins[0].erro || 'Foto não chegou ao servidor.') + ' Toque em Enviar para tentar de novo.');
+  bt.textContent = 'Registrando…';
+  const r = await api('concluir', { modo: S.modo.modo, lote: S.lote, campos: campos }, 3);
+  if (!r.ok) return falhaEnvio(r.erro || 'Falha ao registrar.');
+  S.concluido = true; S.ultimo = r;
+  vibra(r.alertas && r.alertas.length ? 'warning' : 'success');
+  mostraFim(r);
+}
+function falhaEnvio(t) {
+  const e = $('#fec-erro'); e.textContent = t; e.hidden = false;
+  const bt = $('#fec-enviar'); bt.disabled = false; bt.textContent = 'Enviar';
+  vibra('error');
+}
+
+/* ======================= RESULTADO ======================= */
+function mostraFim(r) {
+  const al = r.alertas || [];
+  $('#fim-ic').textContent = al.length ? '⚠️' : '✅';
+  $('#fim-tit').textContent = r.titulo || 'Registrado';
+  $('#fim-sub').textContent = (r.fotos > 1 ? r.fotos + ' fotos · ' : '') + (r.registro ? r.registro : 'registrado');
+  const corpo = $('#fim-corpo'); corpo.innerHTML = '';
+  const bloco = (cls, filhos) => { const d = document.createElement('div'); d.className = cls; filhos.forEach((f) => d.appendChild(f)); corpo.appendChild(d); return d; };
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  if ((r.linhas || []).length) bloco('ctx', r.linhas.map((l) => el('div', '', l)));
+  if (r.coord) {
+    const a = el('a', 'lk', r.mapa); a.href = r.mapa;
+    a.onclick = (ev) => { if (TG && TG.openLink) { ev.preventDefault(); TG.openLink(r.mapa); } };
+    const filhos = [el('div', 'coord', r.coord), a];
+    if (r.endereco) filhos.push(el('div', 'dica', '📍 ' + r.endereco));
+    bloco('ctx', filhos);
+  }
+  if (al.length) {
+    const ul = el('ul', 'al'); al.forEach((a) => ul.appendChild(el('li', '', a)));
+    bloco('msg alerta', [el('b', '', 'Alertas (vão para a conferência)'), ul]);
+  }
+  bloco('dica', [el('div', '', r.postado ? '📨 Foto postada ' + r.postado + '.' : '📨 Não postada no Telegram' + (r.naoPostado && r.naoPostado !== 'NENHUM' ? ' (' + r.naoPostado + ')' : '') + '. Ficou registrada na planilha e no Drive.')]);
+  if (r.pedeKm && r.linhaKm) {
+    const inp = el('input'); inp.id = 'f-km2'; inp.inputMode = 'numeric'; inp.placeholder = 'Número do odômetro';
+    const lab = el('label', 'campo', 'Não consegui ler o odômetro. Digite o KM:'); lab.appendChild(inp);
+    const bt = el('button', 'bt cheio', 'Salvar KM');
+    const msg = el('div', 'dica', '');
+    bt.onclick = async () => {
+      const km = String(inp.value || '').replace(/\D/g, '');
+      if (!/^\d{4,7}$/.test(km)) { msg.textContent = 'KM com 4 a 7 dígitos.'; return; }
+      bt.disabled = true; msg.textContent = 'Salvando…';
+      const x = await api('km', { linha: r.linhaKm, km: km }, 3);
+      msg.textContent = x.ok ? x.texto : (x.erro || 'Falha');
+      if (!x.ok) bt.disabled = false; else { inp.disabled = true; vibra('success'); }
+    };
+    bloco('ctx', [lab, bt, msg]);
+  }
+  $('#fim-outro').hidden = !temMenu();
+  mostra('tela-fim');
+}
+
+/* ======================= NAVEGAÇÃO ======================= */
+function voltar() {
+  if (S.tela === 'tela-revisao') { S.atual = null; return mostraCamera(); }
+  if (S.tela === 'tela-fechar') return mostraCamera();
+  if (S.tela === 'tela-camera') {
+    if (!temMenu()) return fechar();
+    if (S.fotos.length && !S.concluido) return confirma('Descartar as fotos não enviadas?', (ok) => { if (ok) mostraMenu(); });
+    return mostraMenu();
+  }
+  if (S.tela === 'tela-fim') return temMenu() ? mostraMenu() : fechar();
+  fechar();
+}
+function fechar() { if (TG && TG.close) TG.close(); else history.back(); }
+function confirma(txt, cb) {
+  if (TG && TG.showConfirm && TG.isVersionAtLeast && TG.isVersionAtLeast('6.2')) { try { return TG.showConfirm(txt, cb); } catch (e) {} }
+  cb(window.confirm(txt));
+}
+function fechamentoProtegido() {
+  if (!TG) return;
+  const pend = S.fotos.length > 0 && !S.concluido;
+  try { pend ? TG.enableClosingConfirmation() : TG.disableClosingConfirmation(); } catch (e) {}
+}
+function pedeEscritaSePrecisar(m) {
+  if (!TG || S.pediuEscrita || !TG.requestWriteAccess) return;
+  const u = TG.initDataUnsafe && TG.initDataUnsafe.user;
+  const regra = String(m.postar || '').toUpperCase();
+  const vaiPrivado = regra === 'PRIVADO' || (regra.indexOf('TOP') === 0 && !S.cfg.contexto.topico);
+  if (!u || u.allows_write_to_pm || !vaiPrivado) return;
+  try { if (TG.isVersionAtLeast('6.9')) { S.pediuEscrita = true; TG.requestWriteAccess(() => {}); } } catch (e) {}
+}
+
+/* ======================= UTILITÁRIOS ======================= */
+const FMT = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+function dataHora(ms) {
+  const p = {}; FMT.formatToParts(new Date(ms)).forEach((x) => { p[x.type] = x.value; });
+  return p.day + '/' + p.month + '/' + p.year + ' ' + (p.hour === '24' ? '00' : p.hour) + ':' + p.minute + ':' + p.second;
+}
+function coordTxt(lat, lon) { const n = (S.cfg && S.cfg.params.casas) || 6; return Number(lat).toFixed(n) + ',' + Number(lon).toFixed(n); }
+function pad2(n) { return ('0' + n).slice(-2); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function espera(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function novoLote() {
+  const a = new Uint8Array(6); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => { a[i] = Math.random() * 256; });
+  return Date.now().toString(36) + Array.from(a, (b) => ('0' + b.toString(16)).slice(-2)).join('');
+}
+function distM(a, b, c, d) {
+  const R = 6371000, t = Math.PI / 180, x = (c - a) * t, y = (d - b) * t;
+  const h = Math.sin(x / 2) ** 2 + Math.cos(a * t) * Math.cos(c * t) * Math.sin(y / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function vibra(tipo) {
+  try {
+    if (!TG || !TG.HapticFeedback) return;
+    if (tipo === 'impact') TG.HapticFeedback.impactOccurred('medium'); else TG.HapticFeedback.notificationOccurred(tipo);
+  } catch (e) {}
+}
+
+/* ======================= DEMONSTRAÇÃO (?demo=1) ======================= */
+function demo(acao, d) {
+  const modos = [
+    ['PONTO', 'Registro de ponto', '🕒', 'PONTO', ['TIPO'], 'PRIVADO', 1, 'Entrada, intervalo e saída.'],
+    ['KM', 'Painel do veículo', '🚗', 'KM', ['PLACA', 'KM', 'EVENTO'], 'PRIVADO', 1, 'Odômetro e combustível.'],
+    ['OS', 'Fotos da OS', '🛠️', 'GERAL', ['REF', 'OBS'], 'TOPICO', 10, 'Antes, durante e depois do serviço.'],
+    ['VISTORIA', 'Vistoria de rede', '🔎', 'GERAL', ['REF', 'OBS'], 'TOPICO', 10, 'Poste, caixa, cabo, ocupação.'],
+    ['ENERGISA', 'Obra Energisa', '⚡', 'GERAL', ['REF', 'OBS'], 'PRIVADO', 10, 'Apoio às obras programadas.'],
+    ['ESTOQUE', 'Material / almoxarifado', '📦', 'GERAL', ['REF', 'OBS'], 'PRIVADO', 10, 'Recebimento, retirada e devolução.'],
+    ['INOVATEC', 'Rede interna INOVATEC', '🏢', 'GERAL', ['REF', 'OBS'], 'PRIVADO', 10, 'Centro de custo próprio.'],
+    ['LIVRE', 'Foto com localização', '📍', 'GERAL', ['REF', 'OBS'], 'PRIVADO', 10, 'Qualquer registro.']
+  ].map((m) => ({ modo: m[0], rotulo: m[1], icone: m[2], acao: m[3], campos: m[4], postar: m[5], fotosMax: m[6], descricao: m[7] }));
+  const r = (() => {
+    if (acao === 'init') return { ok: true, agora: Date.now(), pessoa: { nome: 'Demonstração', eq: 1, placa: 'QPC5G33', alerta: '' }, modos: modos,
+      modoInicial: (Q.get('modo') || '').toUpperCase(), contexto: { os: '', osCurta: '', elemento: '', ref: '', topico: false },
+      params: { casas: 6, precisaoMax: 50, precisaoBloqueio: 300, gpsIdadeMax: 60, ladoMax: 1600, qualidade: 0.85, relogioTolMin: 5 },
+      tiposPonto: ['ENTRADA', 'SAÍDA INTERVALO', 'VOLTA INTERVALO', 'SAÍDA'], eventosKm: ['INÍCIO DO DIA', 'CHEGADA NA OS', 'SAÍDA DA OS', 'DESLOCAMENTO', 'FIM DO DIA'] };
+    if (acao === 'geo') return { ok: true, endereco: 'Endereço de demonstração, João Pessoa - PB' };
+    if (acao === 'foto') return { ok: true, idx: d.idx };
+    if (acao === 'concluir') {
+      const m = S.fotos[0] && S.fotos[0].meta, c = m ? coordTxt(m.lat, m.lon) : '';
+      return { ok: true, titulo: S.modo.icone + ' ' + S.modo.rotulo.toUpperCase(), linhas: [], fotos: S.fotos.length, coord: c, mapa: c ? MAPA + c : '',
+        endereco: m ? m.endereco : '', alertas: [], registro: 'DEMONSTRAÇÃO', postado: '', naoPostado: 'demonstração: nada foi gravado' };
+    }
+    if (acao === 'km') return { ok: true, texto: '✅ KM ' + d.km + ' (demonstração)' };
+    return { ok: false, erro: 'ação' };
+  })();
+  return espera(acao === 'foto' ? 600 : 250).then(() => r);
+}
+
+/* ======================= EVENTOS ======================= */
+$('#disparo').onclick = capturar;
+$('#cam-virar').onclick = () => { S.facing = S.facing === 'environment' ? 'user' : 'environment'; ligarCamera(); };
+$('#cam-voltar').onclick = voltar;
+$('#cam-tentar').onclick = ligarCamera;
+$('#cam-concluir').onclick = mostraFechar;
+$('#rev-refazer').onclick = () => { S.atual = null; mostraCamera(); };
+$('#rev-usar').onclick = usarFoto;
+$('#fec-voltar').onclick = voltar;
+$('#fec-enviar').onclick = enviarLote;
+$('#fec-mais').onclick = mostraCamera;
+$('#fim-nova').onclick = () => abrirModo(S.modo);
+$('#fim-outro').onclick = mostraMenu;
+$('#fim-fechar').onclick = fechar;
+$('#erro-fechar').onclick = fechar;
+$('#erro-tentar').onclick = () => location.reload();
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.tela === 'tela-camera' && !S.stream) ligarCamera(); });
+
+iniciar();
+</script>
+</body>
+</html>
