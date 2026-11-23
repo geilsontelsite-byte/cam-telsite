@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>CAM TELSITE</title>
-<!-- CAM TELSITE · Mini App de fotos com localização · rev01 · 14/11/2026
+<!-- CAM TELSITE · Mini App de fotos com localização · rev03 · 23/11/2026 (⛽ abastecimento: roteiro de fotos, QR da NFC-e, litros e valor)
+     rev01 · 14/11/2026
      Hospede este arquivo (ex.: GitHub Pages) e cadastre no @BotFather:
        https://<usuario>.github.io/cam-telsite/?api=<ID ou URL /exec do App da Web do bot>
      Teste no navegador, sem servidor:  index.html?demo=1 -->
@@ -67,6 +68,8 @@
     background: rgba(0,0,0,.55); display: flex; gap: 6px; align-items: center; }
   .gps i { width: 9px; height: 9px; border-radius: 50%; background: #888; display: inline-block; }
   .gps.ok i { background: var(--ok); } .gps.medio i { background: var(--alerta); } .gps.ruim i { background: var(--erro); }
+  .passo { position: absolute; top: 98px; left: 10px; right: 10px; z-index: 3; padding: 8px 12px; border-radius: 12px; background: rgba(245,166,35,.92); color: #1b1300; font-size: 13px; line-height: 1.3; }
+  .passo b { font-size: 14px; }
   #carimbo-vivo { position: absolute; left: 0; right: 0; bottom: calc(118px + var(--seg-b)); z-index: 2; padding: 8px 12px 8px 15px;
     background: rgba(8,16,28,.58); border-left: 4px solid var(--ambar); font-size: 12px; line-height: 1.35; }
   #carimbo-vivo .c { color: var(--amarelo); font-family: ui-monospace, "Roboto Mono", Menlo, monospace; font-weight: 700; font-size: 13px; }
@@ -147,6 +150,7 @@
     <button class="bt-red" id="cam-virar" aria-label="Trocar câmera">⟲</button>
   </div>
   <div class="gps" id="gps"><i></i><span id="gps-txt">Aguardando GPS…</span></div>
+  <div class="passo" id="cam-passo" hidden></div>
   <div id="carimbo-vivo"></div>
   <div class="controles">
     <div class="miniaturas" id="cam-minis"></div>
@@ -204,6 +208,7 @@
 const API_PADRAO = 'AKfycbx58OzZPpWpsa0cGHEiIvA2U5o8JQAiKWToKHBG2BKKeKrUPsv3nODxjkWSI2UPHAE4Fg';   // App da Web do bot (implantação CAM, versão 5); o ?api= da URL tem prioridade
 const TZ = 'America/Sao_Paulo';
 const MAPA = 'https://www.google.com/maps/search/?api=1&query=';
+const JSQR_URL = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';   // leitura do QR da NFC-e quando o celular não tem BarcodeDetector
 
 const TG = (window.Telegram && window.Telegram.WebApp) || null;
 const Q = new URLSearchParams(location.search);
@@ -351,10 +356,16 @@ function capturar() {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
   const cx = cv.getContext('2d');
   cx.drawImage(v, 0, 0, w, h);
+  const passo = passoAtual(S.fotos.length);
+  let qrPromise = null;
+  if (passo && passo.qr) {                               // QR da NFC-e lido antes do carimbo cobrir o rodapé
+    const cq = document.createElement('canvas'); cq.width = w; cq.height = h; cq.getContext('2d').drawImage(cv, 0, 0);
+    qrPromise = lerQr(cq);
+  }
   const agora = Date.now(), carimbo = agora + S.offset, g = S.gps;
   desenhaCarimbo(cx, w, h, linhasCarimbo(carimbo, g, S.fotos.length + 1));
   S.atual = {
-    idx: S.fotos.length, dataUrl: cv.toDataURL('image/jpeg', p.qualidade), estado: 'nova',
+    idx: S.fotos.length, dataUrl: cv.toDataURL('image/jpeg', p.qualidade), estado: 'nova', qrPromise: qrPromise,
     meta: { lat: g.lat, lon: g.lon, precisao: g.prec == null ? null : Math.round(g.prec), fonteGps: g.fonte,
       gpsIdadeS: Math.round((agora - g.t) / 1000), carimbo: carimbo, relogioCel: agora, endereco: S.endereco }
   };
@@ -364,11 +375,39 @@ function capturar() {
   mostra('tela-revisao');
 }
 
+/* ======================= ROTEIRO DE FOTOS (rev03) ======================= */
+function passoAtual(i) { const r = S.modo && S.modo.roteiro; return r && r[i] ? r[i] : null; }
+function fotosMin() { return (S.modo && S.modo.fotosMin) || 1; }
+function lerQr(cv) {
+  const tempo = new Promise((ok) => setTimeout(() => ok(''), 6000));
+  const ler = (async () => {
+    try {
+      if ('BarcodeDetector' in window) {
+        const fm = await BarcodeDetector.getSupportedFormats().catch(() => []);
+        if (fm.indexOf('qr_code') >= 0) {
+          const r = await new BarcodeDetector({ formats: ['qr_code'] }).detect(cv);
+          if (r && r.length) return r[0].rawValue || '';
+        }
+      }
+      if (!window.jsQR) await carregaScript(JSQR_URL);
+      if (!window.jsQR) return '';
+      const cx = cv.getContext('2d'), img = cx.getImageData(0, 0, cv.width, cv.height);
+      const q = window.jsQR(img.data, cv.width, cv.height, { inversionAttempts: 'attemptBoth' });
+      return q ? q.data : '';
+    } catch (e) { return ''; }
+  })();
+  return Promise.race([ler, tempo]);
+}
+function carregaScript(src) {
+  return new Promise((ok) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ok; document.head.appendChild(s); });
+}
+
 /* ======================= CARIMBO ======================= */
 function linhasCarimbo(carimbo, g, n) {
   const c = S.cfg, m = S.modo, ctx = c.contexto;
   const alvo = ctx.osCurta ? ctx.osCurta + (ctx.elemento ? ' · ' + ctx.elemento : '') : (ctx.ref || '');
-  const l = [{ t: 'TELSITE · ' + m.rotulo.toUpperCase() + (alvo ? ' · ' + alvo : ''), k: 'titulo' },
+  const papel = passoAtual(n - 1);
+  const l = [{ t: 'TELSITE · ' + m.rotulo.toUpperCase() + (papel ? ' · ' + papel.papel : '') + (alvo ? ' · ' + alvo : ''), k: 'titulo' },
     { t: dataHora(carimbo), k: 'normal' }];
   if (g && g.lat != null) l.push({ t: coordTxt(g.lat, g.lon) + (g.prec != null ? '   ±' + Math.round(g.prec) + ' m' : ''), k: 'coord' });
   if (S.endereco) l.push({ t: enderecoCurto(S.endereco), k: 'normal', quebra: 2 });
@@ -499,8 +538,11 @@ function tique() {
   if (!g) { const d = document.createElement('div'); d.className = 'c'; d.textContent = 'sem localização ainda'; viv.insertBefore(d, viv.children[2] || null); }
   $('#disparo').disabled = !podeFotografar();
   const n = S.fotos.length;
-  $('#cam-concluir').hidden = n === 0;
+  $('#cam-concluir').hidden = n < fotosMin();
   $('#cam-concluir').textContent = 'Concluir (' + n + ')';
+  const ps = passoAtual(n), tot = (S.modo.roteiro || []).length, pe = $('#cam-passo');
+  pe.hidden = !ps;
+  if (ps) pe.innerHTML = '<b>Foto ' + (n + 1) + ' de ' + tot + ' · ' + esc(ps.papel) + '</b><br>' + esc(ps.dica || '');
 }
 
 /* ======================= REVISÃO, FILA E ENVIO ======================= */
@@ -514,6 +556,7 @@ function enfileira(f) { S.fila = S.fila.then(() => enviaFoto(f)); return S.fila;
 async function enviaFoto(f) {
   if (f.estado === 'ok') return;
   f.estado = 'enviando'; renderMinis();
+  if (f.qrPromise) { try { f.meta.qr = (await f.qrPromise) || ''; } catch (e) {} f.qrPromise = null; }
   const r = await api('foto', { modo: S.modo.modo, lote: S.lote, idx: f.idx, foto: f.dataUrl.split(',')[1], meta: f.meta }, 3);
   f.estado = r.ok ? 'ok' : 'erro'; f.erro = r.ok ? '' : r.erro;
   renderMinis();
@@ -542,6 +585,8 @@ function mostraFechar() {
   const box = $('#fec-campos');
   if (!box.dataset.lote || box.dataset.lote !== S.lote) { box.innerHTML = ''; montaCampos(box); box.dataset.lote = S.lote; }
   $('#fec-mais').hidden = S.fotos.length >= m.fotosMax;
+  const prox = passoAtual(S.fotos.length);
+  $('#fec-mais').textContent = prox ? '+ Foto ' + (S.fotos.length + 1) + ': ' + prox.papel.toLowerCase() : '+ Tirar mais fotos';
   $('#fec-enviar').disabled = false;
   $('#fec-enviar').textContent = S.fotos.length > 1 ? 'Enviar ' + S.fotos.length + ' fotos' : 'Enviar';
   mostra('tela-fechar');
@@ -556,7 +601,10 @@ function montaCampos(box) {
     add('<label class="campo">Tipo de ponto<select id="f-tipo"><option value="AUTO">Automático (pela ordem do dia)</option>' + tipos.map((t) => '<option>' + esc(t) + '</option>').join('') + '</select></label>');
   }
   if (campos.indexOf('PLACA') >= 0) add('<label class="campo">Placa<input id="f-placa" maxlength="8" autocapitalize="characters" value="' + esc(c.pessoa.placa || '') + '" placeholder="ABC1D23"></label>');
-  if (campos.indexOf('KM') >= 0) add('<label class="campo">KM do painel (opcional, confere a leitura da foto)<input id="f-km" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="Ex.: 137051"></label>');
+  const ocr = !!(c.params && c.params.ocr);
+  if (campos.indexOf('KM') >= 0) add('<label class="campo">KM do painel ' + (ocr ? '(opcional, confere a leitura da foto)' : '(obrigatório)') + '<input id="f-km" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="Ex.: 137051"></label>');
+  if (campos.indexOf('LITROS') >= 0) add('<label class="campo">Litros abastecidos ' + (ocr ? '(opcional, confere a nota)' : '(da nota, obrigatório)') + '<input id="f-litros" inputmode="decimal" maxlength="8" placeholder="Ex.: 16,155"></label>');
+  if (campos.indexOf('VALOR') >= 0) add('<label class="campo">Valor total R$ ' + (ocr ? '(opcional, confere a nota)' : '(da nota, obrigatório)') + '<input id="f-valor" inputmode="decimal" maxlength="9" placeholder="Ex.: 100,00"></label>');
   if (campos.indexOf('EVENTO') >= 0 && c.eventosKm && c.eventosKm.length) {
     add('<label class="campo">Momento<select id="f-evento"><option value="AUTO">Automático</option>' + c.eventosKm.map((t) => '<option>' + esc(t) + '</option>').join('') + '</select></label>');
   }
@@ -564,11 +612,20 @@ function montaCampos(box) {
   if (campos.indexOf('OBS') >= 0) add('<label class="campo">Observação<textarea id="f-obs" maxlength="300" placeholder="Opcional"></textarea></label>');
 }
 function valor(id) { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; }
+function numBr(v) { let s = String(v || '').replace(/[^\d,.]/g, ''); if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.'); const n = Number(s); return isFinite(n) && s !== '' ? n : NaN; }
 
 async function enviarLote() {
   const bt = $('#fec-enviar'); bt.disabled = true; $('#fec-erro').hidden = true;
-  const campos = { tipo: valor('f-tipo'), placa: valor('f-placa'), km: valor('f-km'), evento: valor('f-evento'), ref: valor('f-ref'), obs: valor('f-obs') };
+  const campos = { tipo: valor('f-tipo'), placa: valor('f-placa'), km: valor('f-km'), evento: valor('f-evento'), ref: valor('f-ref'), obs: valor('f-obs'),
+    litros: valor('f-litros'), valor: valor('f-valor') };
+  const ocr = !!(S.cfg.params && S.cfg.params.ocr), cps = S.modo.campos || [];
+  if (cps.indexOf('PLACA') >= 0 && S.modo.acao === 'ABASTECIMENTO' && !/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(campos.placa.toUpperCase().replace(/[^A-Z0-9]/g, ''))) return falhaEnvio('Placa no formato ABC1D23.');
+  if (!ocr && cps.indexOf('KM') >= 0 && !campos.km) return falhaEnvio('Digite o KM do painel.');
   if (campos.km && !/^\d{4,7}$/.test(campos.km.replace(/\D/g, ''))) return falhaEnvio('KM com 4 a 7 dígitos, só números.');
+  if (!ocr && cps.indexOf('LITROS') >= 0 && !campos.litros) return falhaEnvio('Digite os litros da nota.');
+  if (!ocr && cps.indexOf('VALOR') >= 0 && !campos.valor) return falhaEnvio('Digite o valor total da nota.');
+  if (campos.litros && !(numBr(campos.litros) >= 0.5 && numBr(campos.litros) <= 300)) return falhaEnvio('Litros entre 0,5 e 300 (ex.: 16,155).');
+  if (campos.valor && !(numBr(campos.valor) >= 1 && numBr(campos.valor) <= 5000)) return falhaEnvio('Valor entre R$ 1 e R$ 5.000 (ex.: 100,00).');
   bt.textContent = 'Enviando fotos…';
   await S.fila;
   const pend = S.fotos.filter((f) => f.estado !== 'ok');
@@ -624,6 +681,29 @@ function mostraFim(r) {
       if (!x.ok) bt.disabled = false; else { inp.disabled = true; vibra('success'); }
     };
     bloco('ctx', [lab, bt, msg]);
+  }
+  if (r.pede && r.pede.length && r.linhaAbast) {
+    const rot = { km: ['KM do painel', 'numeric', 'Ex.: 137051'], litros: ['Litros da nota', 'decimal', 'Ex.: 16,155'], valor: ['Valor total R$ da nota', 'decimal', 'Ex.: 100,00'] };
+    const filhos = [el('div', '', 'Faltou para fechar o registro:')], ins = {};
+    r.pede.forEach((k) => {
+      if (!rot[k]) return;
+      const inp = el('input'); inp.inputMode = rot[k][1]; inp.placeholder = rot[k][2]; ins[k] = inp;
+      const lab = el('label', 'campo', rot[k][0]); lab.appendChild(inp); filhos.push(lab);
+    });
+    const bt = el('button', 'bt cheio', 'Salvar'), msg = el('div', 'dica', '');
+    bt.onclick = async () => {
+      const d = { linha: r.linhaAbast, kmLinha: r.linhaKm };
+      Object.keys(ins).forEach((k) => { d[k] = String(ins[k].value || '').trim(); });
+      if (ins.km && !/^\d{4,7}$/.test(d.km.replace(/\D/g, ''))) { msg.textContent = 'KM com 4 a 7 dígitos.'; return; }
+      if (ins.litros && !(numBr(d.litros) >= 0.5)) { msg.textContent = 'Litros como na nota (ex.: 16,155).'; return; }
+      if (ins.valor && !(numBr(d.valor) >= 1)) { msg.textContent = 'Valor como na nota (ex.: 100,00).'; return; }
+      bt.disabled = true; msg.textContent = 'Salvando…';
+      const x = await api('abast', d, 3);
+      msg.textContent = x.ok ? x.texto : (x.erro || 'Falha');
+      if (!x.ok) bt.disabled = false; else { Object.keys(ins).forEach((k) => { ins[k].disabled = true; }); vibra('success'); }
+    };
+    filhos.push(bt, msg);
+    bloco('ctx', filhos);
   }
   $('#fim-outro').hidden = !temMenu();
   mostra('tela-fim');
@@ -691,6 +771,7 @@ function demo(acao, d) {
   const modos = [
     ['PONTO', 'Registro de ponto', '🕒', 'PONTO', ['TIPO'], 'PRIVADO', 1, 'Entrada, intervalo e saída.'],
     ['KM', 'Painel do veículo', '🚗', 'KM', ['PLACA', 'KM', 'EVENTO'], 'PRIVADO', 1, 'Odômetro e combustível.'],
+    ['ABASTECIMENTO', 'Abastecimento', '⛽', 'ABASTECIMENTO', ['PLACA', 'KM', 'LITROS', 'VALOR'], 'PRIVADO', 3, 'Painel antes, cupom fiscal e painel depois.'],
     ['OS', 'Fotos da OS', '🛠️', 'GERAL', ['REF', 'OBS'], 'TOPICO', 10, 'Antes, durante e depois do serviço.'],
     ['VISTORIA', 'Vistoria de rede', '🔎', 'GERAL', ['REF', 'OBS'], 'TOPICO', 10, 'Poste, caixa, cabo, ocupação.'],
     ['ENERGISA', 'Obra Energisa', '⚡', 'GERAL', ['REF', 'OBS'], 'PRIVADO', 10, 'Apoio às obras programadas.'],
@@ -698,6 +779,12 @@ function demo(acao, d) {
     ['INOVATEC', 'Rede interna INOVATEC', '🏢', 'GERAL', ['REF', 'OBS'], 'PRIVADO', 10, 'Centro de custo próprio.'],
     ['LIVRE', 'Foto com localização', '📍', 'GERAL', ['REF', 'OBS'], 'PRIVADO', 10, 'Qualquer registro.']
   ].map((m) => ({ modo: m[0], rotulo: m[1], icone: m[2], acao: m[3], campos: m[4], postar: m[5], fotosMax: m[6], descricao: m[7] }));
+  modos.filter((m) => m.acao === 'ABASTECIMENTO').forEach((m) => {
+    m.fotosMin = 2;
+    m.roteiro = [{ papel: 'PAINEL ANTES', dica: 'Odômetro (KM total) e marcador de combustível, antes de abastecer.' },
+      { papel: 'CUPOM FISCAL', dica: 'Cupom inteiro e legível, com o QR code e a chave de acesso.', qr: true },
+      { papel: 'PAINEL DEPOIS', dica: 'Opcional: marcador de combustível depois de abastecer.' }];
+  });
   const r = (() => {
     if (acao === 'init') return { ok: true, agora: Date.now(), pessoa: { nome: 'Demonstração', eq: 1, placa: 'QPC5G33', alerta: '' }, modos: modos,
       modoInicial: (Q.get('modo') || '').toUpperCase(), contexto: { os: '', osCurta: '', elemento: '', ref: '', topico: false },
